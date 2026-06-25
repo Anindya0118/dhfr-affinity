@@ -1,0 +1,26 @@
+# Core scientific stack
+numpy>=1.24
+pandas>=2.0
+scipy>=1.10
+scikit-learn>=1.3
+matplotlib>=3.7
+pyyaml>=6.0
+tqdm>=4.65
+
+# Cheminformatics
+rdkit>=2023.9.1
+
+# Data source
+chembl_webresource_client>=0.10.9
+
+# Protein language model
+fair-esm>=2.0.0
+
+# Deep learning (install torch first, then PyG wheels matched to your torch/CUDA)
+torch>=2.1
+torch-geometric>=2.4
+
+# API / serving (Project 1 demo)
+fastapi>=0.110
+uvicorn>=0.29
+pydantic>=2.0

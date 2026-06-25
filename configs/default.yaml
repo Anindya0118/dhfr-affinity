@@ -1,0 +1,38 @@
+# Default configuration for the DHFR affinity pipeline.
+# Edit values here rather than in code.
+
+data:
+  targets:                 # ChEMBL target IDs (verify on chembl website)
+    human: CHEMBL202
+    e_coli: CHEMBL1809
+    mouse: CHEMBL2366
+    p_falciparum: CHEMBL3494
+  accepted_types: [IC50, Ki, Kd]
+  max_per_target: null     # set to e.g. 2000 for a fast first run
+  pic50_bounds: [3.0, 12.0]
+  sequences_fasta: data/dhfr_sequences.fasta
+
+split:
+  method: scaffold         # scaffold | random
+  frac_train: 0.8
+  frac_valid: 0.1
+  seed: 42
+
+protein:
+  esm_model: esm2_t12_35M_UR50D   # fast; use esm2_t33_650M_UR50D for quality
+  cache_dir: data/esm_cache
+
+model:
+  gnn_hidden: 128
+  gnn_layers: 3
+  ligand_out: 128
+  protein_out: 128
+  head_hidden: 256
+  dropout: 0.1
+
+train:
+  epochs: 100
+  lr: 0.001
+  weight_decay: 0.00001
+  patience: 15
+  batch_size: 64

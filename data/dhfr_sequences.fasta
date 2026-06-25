@@ -1,0 +1,5 @@
+>e_coli
+# Paste E. coli folA (DHFR) wild-type sequence here. UniProt: P0ABQ4
+>human
+# Paste human DHFR sequence here. UniProt: P00374
+# Add resistant variants as extra records, e.g. >e_coli_L28R with the mutated sequence.

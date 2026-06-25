@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.ipynb_checkpoints/
+data/esm_cache/
+data/*.csv
+data/*.parquet
+*.pt
+.venv/
+.DS_Store
