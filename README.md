@@ -1,83 +1,57 @@
-# DHFR Antifolate Binding-Affinity Prediction
+# dhfr-affinity
 
-**Structure-aware protein–ligand binding affinity prediction for antifolate small molecules against dihydrofolate reductase (DHFR).**
+Predicting how tightly small-molecule antifolates bind dihydrofolate reductase (DHFR), with an ESM-2 + graph-neural-net model.
 
-A two-branch model: a graph neural network reads the ligand (RDKit → PyTorch Geometric), an ESM-2 protein language model reads the DHFR target, and a fusion head predicts pIC50. It generalises a two-branch architecture I built for antimicrobial-resistance work to the protein–ligand affinity problem.
+I build interpretable ML for *E. coli* resistance to trimethoprim-sulfamethoxazole, and trimethoprim is a small-molecule DHFR inhibitor. That work is about why a target stops responding to a drug. This repo is me working the other side of it: given the target, predict which molecules bind, and how well.
 
----
+## What it does
 
-## Why DHFR / antifolates
+A two-branch model:
 
-Trimethoprim — half of the antibiotic TMP-SMX (co-trimoxazole) — is a small-molecule inhibitor of dihydrofolate reductase (DHFR, the *folA* gene product). My prior work modelled *E. coli* resistance to TMP-SMX from genomics. This project asks the complementary, structure-driven question: **given a small molecule and a DHFR target (wild-type or a resistant variant), how tightly do they bind?** That is the binding-affinity prediction task at the centre of small-molecule drug design.
+- a GIN graph network over the ligand (atoms/bonds), built from SMILES with RDKit;
+- a frozen ESM-2 embedding of the DHFR protein sequence;
+- concatenate the two, MLP head, predict pIC50.
 
-## What's modelled
+There's also a ligand-only version with no protein branch, as an ablation — if the two-branch model can't beat it, the protein signal isn't doing anything, and the numbers below say how that turned out.
 
-- **Ligand branch** — a GIN message-passing network over the atom/bond graph (`features/ligand.py`, `models/ligand_gnn.py`).
-- **Protein branch** — frozen ESM-2 embeddings of the target sequence, mean-pooled (`features/protein.py`). Variant sequences let the model see how binding-site mutations shift predicted affinity.
-- **Fusion** — concatenate both branch embeddings → MLP → pIC50 (`models/hybrid.py`).
-- **Baseline** — a ligand-only ablation. If the two-branch model doesn't beat it, the protein signal isn't helping, and the writeup says so.
+Data is DHFR bioactivity pulled from ChEMBL (E. coli + human), converted to pIC50. Train/test is a **scaffold split** rather than random, so whole chemical series stay on one side — random splits leak close analogues and inflate the score.
 
-## Methodological choices that matter
+## Results so far (the honest version)
 
-- **Scaffold split, not random** (`data/splits.py`) — random splits leak analogues across train/test and inflate scores. Scaffold splitting forces generalisation to unseen chemotypes — an honest estimate of out-of-domain behaviour.
-- **Interpretability** (`interpret.py`) — per-atom gradient attribution showing which parts of a molecule drive a prediction.
-- **Companion structure check (Project 2)** — Boltz-2 co-folding as an independent, structure-based sanity check on predicted affinities, with an explicit assessment of where the foundation model is and isn't trustworthy.
+Small dataset: ~320 compounds after cleaning and filtering to the organisms I have sequences for, with a ~30-compound test set. On a scaffold split:
 
----
+| model | RMSE | Pearson | Spearman |
+|---|---|---|---|
+| ligand-only | 1.72 | -0.43 | -0.41 |
+| two-branch  | 1.54 |  0.28 |  0.19 |
 
-## Repo layout
+Read this for what it is. The two-branch model beats the ligand-only baseline and the correlation goes from negative to positive, so the protein branch is contributing something. But Pearson 0.28 is weak, and a 30-compound test set makes the metric itself noisy. The bottleneck is data volume, not the architecture — the model early-stops in ~20 epochs because the validation set is tiny. Next step is loosening the ChEMBL filters and adding more targets (with their sequences) to get into the low thousands of compounds, then retraining.
+
+I'd rather show the real number and the reason behind it than a tuned figure on 30 points.
+
+## Project 2 — Boltz-2 co-folding (in progress)
+
+Separate question: can you trust a co-folding foundation model's *predicted* affinity? `notebooks/02_project2_boltz2.ipynb` runs Boltz-2 on DHFR-ligand complexes and pulls out its affinity prediction. Trimethoprim against E. coli DHFR runs end to end and produces an affinity value. Still to do: a 3-6 compound panel to check whether Boltz's ranking matches experiment, and a wild-type vs resistant-variant comparison to see if it picks up a binding-site mutation. That last one is the interesting test and it isn't done yet.
+
+## Layout
 
 ```
 src/dhfr_affinity/
-  data/        ChEMBL fetch (chembl.py), cleaning/pIC50 (clean.py), scaffold split (splits.py)
-  features/    RDKit ligand graphs + fingerprints (ligand.py), ESM-2 embeddings (protein.py)
-  models/      GIN ligand branch (ligand_gnn.py), two-branch + baseline (hybrid.py)
-  dataset.py   bundles graphs + protein embeddings + labels into PyG Data
-  train.py     training loop w/ early stopping; evaluate.py  metrics + plots; interpret.py
-  utils.py     seeding, device, regression metrics
+  data/      ChEMBL fetch, cleaning -> pIC50, scaffold split
+  features/  RDKit ligand graphs + fingerprints, ESM-2 embeddings
+  models/    GIN ligand branch, two-branch model + ligand-only baseline
+  dataset.py train.py evaluate.py interpret.py utils.py
 notebooks/
-  01_project1_colab.ipynb   end-to-end runner (Project 1)
-  02_project2_boltz2.ipynb  Boltz-2 co-folding reality check (Project 2)
-scripts/run_pipeline.py     CLI: data -> features -> train -> evaluate
-configs/default.yaml        all knobs in one place
+  01_project1_colab.ipynb   data -> train -> evaluate (run this one)
+  02_project2_boltz2.ipynb  Boltz-2 co-folding (in progress)
 ```
 
----
+## Running it
 
-## Quickstart (Google Colab — recommended)
+Open `notebooks/01_project1_colab.ipynb` in Colab on a GPU, set the clone URL, run top to bottom. It pulls ChEMBL, fetches the DHFR sequences from UniProt, trains both models, prints the comparison and prediction plots. Locally: `pip install -r requirements.txt && pip install -e .`, then `python scripts/run_pipeline.py --max-per-target 300` for a quick pass.
 
-1. Push this repo to GitHub.
-2. Open `notebooks/01_project1_colab.ipynb` in Colab, set **Runtime → GPU**, edit the clone URL, and run top to bottom. It installs deps, auto-fetches DHFR sequences from UniProt, pulls + cleans ChEMBL data, trains the baseline and the two-branch model, and plots results.
-3. For the structure check, open `notebooks/02_project2_boltz2.ipynb` on an **A100/L4** runtime (Pro+ or pay-as-you-go) and run a few DHFR–ligand complexes.
+## Notes
 
-## Quickstart (local / CLI)
-
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-# install torch + torch-geometric matched to your platform/CUDA first if on GPU
-pip install -e .
-
-# add real DHFR sequences (UniProt P0ABQ4 for E. coli, P00374 for human) to:
-#   data/dhfr_sequences.fasta
-
-# fast first pass on a small data slice:
-python scripts/run_pipeline.py --config configs/default.yaml --max-per-target 300
-```
-
-Outputs (`outputs/`): `dhfr_clean.csv`, `comparison.csv` (ligand-only vs two-branch), `metrics.json`.
-
----
-
-## Status / roadmap
-
-- [x] Data, featurisation, two-branch model, scaffold split, training, evaluation, attribution
-- [ ] Resistant-variant case study (WT vs mutant DHFR embedding, predicted potency shift)
-- [ ] Boltz-2 co-folding comparison + trust assessment
-- [ ] FastAPI + Docker serving demo (SMILES + target → predicted pIC50 + attribution)
-
-## Notes & honesty
-
-- pIC50 is pooled across IC50/Ki/Kd and several organisms to have enough data; the *E. coli* slice is the case study, not the whole training set.
-- The protein branch here is **sequence-based** (ESM-2), so this is structure-*aware* via the ligand graph and sequence-driven on the target side; Project 2 adds the genuinely 3D structure-based view.
-- ESM-2 is used as a frozen feature extractor (not fine-tuned).
+- ESM-2 is used frozen, as a feature extractor — not fine-tuned.
+- The protein side is sequence-based, so this is structure-*aware* via the ligand graph; the genuinely 3D structure view is what Project 2 is for.
+- pIC50 pools IC50/Ki/Kd across organisms to have enough data; E. coli is the case study, not the whole training set.
